@@ -1,0 +1,26 @@
+version: '3'
+services:
+   
+  todoapp:
+    image: public.ecr.aws/i4y9y9g1/karate-todo:latest
+    ports:
+      - 8080:8080
+
+  jobserver:
+    image: public.ecr.aws/i4y9y9g1/karate-mvn:latest
+    depends_on:
+      - todoapp
+    environment:
+      - "URL_BASE=http://todoapp:8080"
+    working_dir: "/karate-todo"
+    entrypoint: ["mvn", "test-compile", "exec:java", "-Dexec.classpathScope=test", "-Dexec.mainClass=app.perf.job.TodoPerfJobConfig", "-Dkarate.env=perf", "-Dexec.args=1"]
+    ports:
+      - 8090:8090
+    volumes:
+      - "./target:/karate-todo/target"
+      
+  jobexecutor:
+    image: public.ecr.aws/i4y9y9g1/karate-mvn:latest
+    depends_on:
+      - jobserver
+    entrypoint: ["java", "-jar", "karate.jar", "-j", "http://jobserver:8090"]     

@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  jobCluster:
+      Type: 'AWS::ECS::Cluster'
+      Properties:
+        ClusterName: job-cluster
+        CapacityProviders:
+          - FARGATE
+          - FARGATE_SPOT
+  logGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref AWS::StackName        
+  serviceRole:
+      Type: AWS::IAM::Role
+      Properties:            
+          AssumeRolePolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: 
+                    - sts:AssumeRole           
+                  Principal:
+                      Service: 
+                        - ecs-tasks.amazonaws.com
+          Path: "/"
+          Policies:           
+            - PolicyName: policy-logs
+              PolicyDocument:
+                  Version: '2012-10-17'
+                  Statement:
+                    - Effect: Allow
+                      Action:
+                        - logs:*
+                      Resource: "*"    
+  jobExecutorTask:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: job-executor
+          Image: httpd:2.4
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80          
+          Command:
+            - >-
+              /bin/sh -c "while true; do echo '<html> <head> <title>Amazon ECS
+              Sample App</title> <style>body {margin-top: 40px;
+              background-color: #333;} </style> </head><body> <div
+              style=color:white;text-align:center> <h1>Amazon ECS Sample
+              App</h1> <h2>Congratulations!</h2> <p>Your application is now
+              running on a container in Amazon ECS.</p>' > top; /bin/date > date
+              ; echo '</div></body></html>' > bottom; cat top date bottom >
+              /usr/local/apache2/htdocs/index.html ; sleep 1; done"
+          EntryPoint:
+            - sh
+            - '-c'      
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref logGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      NetworkMode: awsvpc
+      Family: job-executor-task
+      Cpu: 1 vCPU
+      Memory: 3 GB
+      RequiresCompatibilities:
+        - FARGATE       
+      ExecutionRoleArn: !GetAtt serviceRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+  jobExecutorService:
+      Type: 'AWS::ECS::Service'
+      Properties:
+        ServiceName: job-executor-service
+        Cluster: !Ref jobCluster
+        LaunchType: FARGATE
+        DesiredCount: 1
+        NetworkConfiguration:
+          AwsvpcConfiguration:
+            # AssignPublicIp: ENABLED
+            SecurityGroups:
+              - sg-03b00764
+            Subnets:
+              - subnet-49119805
+              - subnet-75ff141e
+              - subnet-a6e5c4dc
+        TaskDefinition: !Ref jobExecutorTask      

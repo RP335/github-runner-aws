@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  
+  VpcId:
+    Type: String
+    Default: vpc-0a2bb95f59694b84b
+  
+  SubnetId:
+    Type: String
+    Default: subnet-0f7b2c9dd3f6e9645
+
+Resources:
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+
+  DefaultSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: allow http in / out
+        VpcId: !Ref VpcId
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  DefaultRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+              - ecs.amazonaws.com
+              - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+
+  FargateService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref EcsCluster
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE    
+      NetworkConfiguration:
+          AwsvpcConfiguration:
+            AssignPublicIp: ENABLED
+            SecurityGroups:
+              - !Ref DefaultSecurityGroup
+            Subnets:
+              - !Ref SubnetId
+      TaskDefinition: !Ref FargateServiceTaskDefinition
+    DependsOn:
+    - DefaultSecurityGroup
+
+  FargateServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+
+  FargateServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        -
+          Name: github-actions-runner-container
+          Essential: true
+          Image: docker.io/rp335/github-action-runner-linux:latest
+          LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref FargateServiceLogGroup
+                awslogs-stream-prefix: github-actions-runner-logs
+                awslogs-region: !Ref AWS::Region
+          PortMappings:
+            -
+              ContainerPort: 8080
+              HostPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: GH_TOKEN
+              Value: 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
+            - Name: GH_OWNER
+              Value: RP335
+            - Name: GH_REPOSITORY
+              Value: calculator
+      Cpu: 1 vCPU
+      ExecutionRoleArn: !Ref DefaultRole
+      TaskRoleArn: !Ref DefaultRole
+      Memory: 3 GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        -  FARGATE
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX            
